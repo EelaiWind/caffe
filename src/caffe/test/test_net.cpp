@@ -9,6 +9,7 @@
 #include "caffe/common.hpp"
 #include "caffe/filler.hpp"
 #include "caffe/net.hpp"
+
 #include "caffe/util/io.hpp"
 #include "caffe/util/math_functions.hpp"
 

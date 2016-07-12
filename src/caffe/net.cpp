@@ -28,6 +28,7 @@ Net<Dtype>::Net(const NetParameter& param, const Net* root_net)
 }
 
 template <typename Dtype>
+
 Net<Dtype>::Net(const string& param_file, Phase phase,
     const int level, const vector<string>* stages,
     const Net* root_net)
