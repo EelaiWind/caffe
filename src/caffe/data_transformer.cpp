@@ -323,7 +323,7 @@ void rotate_crop(cv::Mat& img, int degrees){
 
 
 template<typename Dtype>
-void DataTransformer<Dtype>::Transform(const cv::Mat& img,
+void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
                                        Blob<Dtype>* transformed_blob) {
   const int min_side = param_.min_side();
   const int rotation_angle = param_.max_rotation_angle();
@@ -359,14 +359,10 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& img,
   const bool do_mirror = param_.mirror() && Rand(2);
   const bool has_mean_file = param_.has_mean_file();
   const bool has_mean_values = mean_values_.size() > 0;
-
-  float current_prob;
-
   const bool do_rotation = rotation_angle > 0 && phase_ == TRAIN;
-
   const bool do_resize_to_min_side = min_side > 0;
 
-  const bool do_mirror = param_.mirror() && phase_ == TRAIN && Rand(2);
+  float current_prob;
 
   caffe_rng_uniform(1, 0.f, 1.f, &current_prob);
   const bool do_brightness = param_.contrast_brightness_adjustment() && phase_ == TRAIN && current_prob > apply_prob;
@@ -377,20 +373,19 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& img,
   caffe_rng_uniform(1, 0.f, 1.f, &current_prob);
   const bool do_color_shift = max_color_shift > 0 && phase_ == TRAIN && current_prob > apply_prob;
 
-
-  cv::Mat cv_img = img;
+  cv::Mat proccessedImg = cv_img;
 
   int current_angle = 0;
   if (do_rotation) {
     current_angle = Rand(rotation_angle*2 + 1) - rotation_angle;
     if (current_angle)
-      rotate_crop(cv_img, current_angle);
+      rotate_crop(proccessedImg, current_angle);
   }
 
   // resizing and crop according to min side, preserving aspect ratio
   if (do_resize_to_min_side) {
-     resize(cv_img, min_side);
-     crop(cv_img, min_side);
+     resize(proccessedImg, min_side);
+     crop(proccessedImg, min_side);
   }
 
   // apply color shift
@@ -400,13 +395,13 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& img,
     int r = Rand(max_color_shift + 1);
     int sign = Rand(2);
 
-    cv::Mat shiftArr = cv_img.clone();
+    cv::Mat shiftArr = proccessedImg.clone();
     shiftArr.setTo(cv::Scalar(b,g,r));
 
     if (sign == 1) {
-      cv_img -= shiftArr;
+      proccessedImg -= shiftArr;
     } else {
-      cv_img += shiftArr;
+      proccessedImg += shiftArr;
     }
   }
 
@@ -416,7 +411,7 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& img,
   if (do_brightness){
       caffe_rng_uniform(1, min_contrast, max_contrast, &alpha);
       beta = Rand(max_brightness_shift * 2 + 1) - max_brightness_shift;
-      cv_img.convertTo(cv_img, -1, alpha, beta);
+      proccessedImg.convertTo(proccessedImg, -1, alpha, beta);
   }
 
   // set smoothness
@@ -427,16 +422,16 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& img,
     smooth_param = 1 + 2 * Rand(max_smooth/2);
     switch (smooth_type) {
         case 0:
-            cv::GaussianBlur(cv_img, cv_img, cv::Size(smooth_param, smooth_param), 0);
+            cv::GaussianBlur(proccessedImg, proccessedImg, cv::Size(smooth_param, smooth_param), 0);
             break;
         case 1:
-            cv::blur(cv_img, cv_img, cv::Size(smooth_param, smooth_param));
+            cv::blur(proccessedImg, proccessedImg, cv::Size(smooth_param, smooth_param));
             break;
         case 2:
-            cv::medianBlur(cv_img, cv_img, smooth_param);
+            cv::medianBlur(proccessedImg, proccessedImg, smooth_param);
             break;
         case 3:
-            cv::boxFilter(cv_img, cv_img, -1, cv::Size(smooth_param * 2, smooth_param * 2));
+            cv::boxFilter(proccessedImg, proccessedImg, -1, cv::Size(smooth_param * 2, smooth_param * 2));
             break;
         default:
             break;
@@ -480,7 +475,7 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& img,
 
   int h_off = 0;
   int w_off = 0;
-  cv::Mat cv_cropped_img = cv_img;
+  cv::Mat cv_cropped_img = proccessedImg;
   if (crop_size) {
     CHECK_EQ(crop_size, height);
     CHECK_EQ(crop_size, width);

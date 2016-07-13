@@ -1,36 +1,36 @@
 name: "CIFAR10_quick"
 layer {
   name: "cifar"
-  type: "Data"
+  type: "ImageData"
   top: "data"
   top: "label"
   include {
     phase: TRAIN
   }
   transform_param {
-    mean_file: "examples/cifar10/mean.binaryproto"
+    mean_file: "/home/nvision/data/mean.binaryproto"
   }
-  data_param {
-    source: "examples/cifar10/cifar10_train_lmdb"
+  image_data_param {
+    source: "/media/data/nvision/cifar10/training_images/image_list.txt"
     batch_size: 100
-    backend: LMDB
+    shuffle: true
   }
 }
 layer {
   name: "cifar"
-  type: "Data"
+  type: "ImageData"
   top: "data"
   top: "label"
   include {
     phase: TEST
   }
   transform_param {
-    mean_file: "examples/cifar10/mean.binaryproto"
+    mean_file: "/home/nvision/data/mean.binaryproto"
   }
-  data_param {
-    source: "examples/cifar10/cifar10_test_lmdb"
+  image_data_param {
+    source: "/media/data/nvision/cifar10/testing_images/image_list.txt"
     batch_size: 100
-    backend: LMDB
+    shuffle: true
   }
 }
 layer {
