@@ -1,6 +1,5 @@
 #ifdef USE_OPENCV
 #include <opencv2/core/core.hpp>
-#include <opencv2/core/core.hpp>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -321,6 +320,25 @@ void rotate_crop(cv::Mat& img, int degrees){
     crop_center(img, (int)wr, (int)hr);
 }
 
+void randomFlip(cv::Mat &img, int flipType)
+{
+    cv::flip(img, img, flipType);
+}
+
+void colorShifting(cv::Mat &img, int red_offst, int green_offset, int blue_offset)
+{
+    cv::Mat shiftArr = img.clone();
+    shiftArr.setTo(cv::Scalar(blue_offset, green_offset, red_offst));
+
+    img += shiftArr;
+}
+
+void randomGaussianSmoothing(cv::Mat &img, int max_smooth)
+{
+    float sigma;
+    caffe_rng_uniform(1, 0.1f, 0.5f, &sigma);
+    cv::GaussianBlur(img, img, cv::Size(max_smooth, max_smooth), sigma);
+}
 
 template<typename Dtype>
 void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
@@ -330,10 +348,9 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
   const float min_contrast = param_.min_contrast();
   const float max_contrast = param_.max_contrast();
   const int max_brightness_shift = param_.max_brightness_shift();
-  const float max_smooth = param_.max_smooth();
+  const int smooth_filter_size = param_.smooth_filter_size();
   const int max_color_shift = param_.max_color_shift();
   const float apply_prob = 1.f - param_.apply_probability();
-  const bool debug_params = param_.debug_params();
   const int crop_size = param_.crop_size();
   const int img_channels = cv_img.channels();
   const int img_height = cv_img.rows;
@@ -353,106 +370,69 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
   CHECK_LE(width, img_width);
   CHECK_GE(num, 1);
 
+  CHECK( smooth_filter_size % 2 == 1 ) << "smooth_filter_size must be a odd number";
   CHECK(cv_img.depth() == CV_8U) << "Image data type must be unsigned byte";
 
   const Dtype scale = param_.scale();
   const bool do_mirror = param_.mirror() && Rand(2);
   const bool has_mean_file = param_.has_mean_file();
   const bool has_mean_values = mean_values_.size() > 0;
-  const bool do_rotation = rotation_angle > 0 && phase_ == TRAIN;
+  const bool do_rotation = rotation_angle > 0;
   const bool do_resize_to_min_side = min_side > 0;
 
   float current_prob;
 
   caffe_rng_uniform(1, 0.f, 1.f, &current_prob);
-  const bool do_brightness = param_.contrast_brightness_adjustment() && phase_ == TRAIN && current_prob > apply_prob;
+  const bool do_brightness = param_.contrast_brightness_adjustment() && current_prob > apply_prob;
 
   caffe_rng_uniform(1, 0.f, 1.f, &current_prob);
-  const bool do_smooth = param_.smooth_filtering() && phase_ == TRAIN && max_smooth > 1 && current_prob >  apply_prob;
+  const bool do_smooth = param_.smooth_filtering() && smooth_filter_size > 1 && current_prob >  apply_prob;
 
   caffe_rng_uniform(1, 0.f, 1.f, &current_prob);
-  const bool do_color_shift = max_color_shift > 0 && phase_ == TRAIN && current_prob > apply_prob;
+  const bool do_color_shift = max_color_shift > 0 && current_prob > apply_prob;
 
-  cv::Mat proccessedImg = cv_img;
+  caffe_rng_uniform(1, 0.f, 1.f, &current_prob);
+  const bool do_random_flipping = param_.random_flipping() && current_prob > apply_prob;
+
+  cv::Mat proccessedImage = cv_img;
 
   int current_angle = 0;
   if (do_rotation) {
     current_angle = Rand(rotation_angle*2 + 1) - rotation_angle;
     if (current_angle)
-      rotate_crop(proccessedImg, current_angle);
+      rotate_crop(proccessedImage, current_angle);
   }
 
   // resizing and crop according to min side, preserving aspect ratio
   if (do_resize_to_min_side) {
-     resize(proccessedImg, min_side);
-     crop(proccessedImg, min_side);
+     resize(proccessedImage, min_side);
+     crop(proccessedImage, min_side);
   }
 
   // apply color shift
   if (do_color_shift) {
-    int b = Rand(max_color_shift + 1);
-    int g = Rand(max_color_shift + 1);
-    int r = Rand(max_color_shift + 1);
-    int sign = Rand(2);
-
-    cv::Mat shiftArr = proccessedImg.clone();
-    shiftArr.setTo(cv::Scalar(b,g,r));
-
-    if (sign == 1) {
-      proccessedImg -= shiftArr;
-    } else {
-      proccessedImg += shiftArr;
-    }
+    int red_offst = Rand(2*max_color_shift + 1)-max_color_shift;
+    int green_offset = Rand(2*max_color_shift + 1)-max_color_shift;
+    int blue_offset = Rand(2*max_color_shift + 1)-max_color_shift;
+    colorShifting(proccessedImage, red_offst, green_offset, blue_offset);
   }
 
   // set contrast and brightness
-  float alpha;
-  int beta;
   if (do_brightness){
-      caffe_rng_uniform(1, min_contrast, max_contrast, &alpha);
-      beta = Rand(max_brightness_shift * 2 + 1) - max_brightness_shift;
-      proccessedImg.convertTo(proccessedImg, -1, alpha, beta);
+    float alpha;
+    int beta;
+    caffe_rng_uniform(1, min_contrast, max_contrast, &alpha);
+    beta = Rand(max_brightness_shift * 2 + 1) - max_brightness_shift;
+    proccessedImage.convertTo(proccessedImage, -1, alpha, beta);
   }
 
   // set smoothness
-  int smooth_param = 0;
-  int smooth_type = 0;
   if (do_smooth) {
-    smooth_type = Rand(4);
-    smooth_param = 1 + 2 * Rand(max_smooth/2);
-    switch (smooth_type) {
-        case 0:
-            cv::GaussianBlur(proccessedImg, proccessedImg, cv::Size(smooth_param, smooth_param), 0);
-            break;
-        case 1:
-            cv::blur(proccessedImg, proccessedImg, cv::Size(smooth_param, smooth_param));
-            break;
-        case 2:
-            cv::medianBlur(proccessedImg, proccessedImg, smooth_param);
-            break;
-        case 3:
-            cv::boxFilter(proccessedImg, proccessedImg, -1, cv::Size(smooth_param * 2, smooth_param * 2));
-            break;
-        default:
-            break;
-    }
+    randomGaussianSmoothing(proccessedImage, smooth_filter_size);
   }
 
-  if (debug_params && phase_ == TRAIN) {
-    LOG(INFO) << "----------------------------------------";
-
-    if (do_rotation) {
-        LOG(INFO) << "* parameter for rotation: ";
-        LOG(INFO) << "  current rotation angle: " << current_angle;
-    }
-    if (do_brightness) {
-	  LOG(INFO) << "* parameter for contrast adjustment: ";
-	  LOG(INFO) << "  alpha: " << alpha << ", beta: " << beta;
-	}
-    if (do_smooth) {
-      LOG(INFO) << "* parameter for smooth filtering: ";
-	  LOG(INFO) << "  smooth type: " << smooth_type << ", smooth param: " << smooth_param;
-	}
+  if (do_random_flipping){
+    randomFlip(proccessedImage, Rand(3) - 1);
   }
 
   Dtype* mean = NULL;
@@ -475,7 +455,7 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
 
   int h_off = 0;
   int w_off = 0;
-  cv::Mat cv_cropped_img = proccessedImg;
+  cv::Mat cv_cropped_img = proccessedImage;
   if (crop_size) {
     CHECK_EQ(crop_size, height);
     CHECK_EQ(crop_size, width);
@@ -488,7 +468,7 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
       w_off = (img_width - crop_size) / 2;
     }
     cv::Rect roi(w_off, h_off, crop_size, crop_size);
-    cv_cropped_img = cv_img(roi);
+    cv_cropped_img = proccessedImage(roi);
   } else {
     CHECK_EQ(img_height, height);
     CHECK_EQ(img_width, width);
@@ -729,7 +709,12 @@ vector<int> DataTransformer<Dtype>::InferBlobShape(
 template <typename Dtype>
 void DataTransformer<Dtype>::InitRand() {
   const bool needs_rand = param_.mirror() ||
-      (phase_ == TRAIN && param_.crop_size());
+      (phase_ == TRAIN && param_.crop_size()) ||
+      param_.max_rotation_angle() > 0 ||
+      param_.max_color_shift() > 0 ||
+      param_.contrast_brightness_adjustment() ||
+      param_.smooth_filtering() ||
+      param_.random_flipping();
   if (needs_rand) {
     const unsigned int rng_seed = caffe_rng_rand();
     rng_.reset(new Caffe::RNG(rng_seed));
