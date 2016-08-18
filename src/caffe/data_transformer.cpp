@@ -320,9 +320,9 @@ void rotate_crop(cv::Mat& img, int degrees){
     crop_center(img, (int)wr, (int)hr);
 }
 
-void randomFlip(cv::Mat &img, int flipType)
+void flipHorizontally(cv::Mat &img)
 {
-    cv::flip(img, img, flipType);
+    cv::flip(img, img, 1);
 }
 
 void colorShifting(cv::Mat &img, int red_offst, int green_offset, int blue_offset)
@@ -432,7 +432,7 @@ void DataTransformer<Dtype>::Transform(const cv::Mat& cv_img,
   }
 
   if (do_random_flipping){
-    randomFlip(proccessedImage, Rand(3) - 1);
+    flipHorizontally(proccessedImage);
   }
 
   Dtype* mean = NULL;
